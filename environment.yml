@@ -1,9 +1,10 @@
-name: sandbox-google-places-api
+name: google-places
 channels:
   - defaults
 dependencies:
   - python=3.9
   - pip
   - pip:
+    - python-dotenv
+    - anthropic
     - googlemaps==4.10.0
-    - python-dotenv==1.0.0
