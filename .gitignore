@@ -169,3 +169,8 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
+
+# Sensitive information
+.env
+__pycache__/
+*.pyc
