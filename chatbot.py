@@ -324,13 +324,71 @@ def tool_geocode(address: str) -> dict:
         "longitude": location['lng']
     }
 
+TOOL_PLACE_DETAILS = {
+    "name": "tool_place_details",
+    "description": "Get detailed information about a specific place using its place_id from Google Places API",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "place_id": {
+                "type": "string",
+                "description": "The place_id of the location to get details for. This can be obtained from the results of places_nearby searches."
+            },
+            "language": {
+                "type": "string",
+                "description": "The language code for the results (e.g., 'en', 'pt')"
+            },
+            "fields": {
+                "type": "array",
+                "description": "List of specific fields to return. If empty, returns all available fields.",
+                "items": {
+                    "type": "string",
+                    "enum": [
+                        "address_component", "adr_address", "business_status", 
+                        "formatted_address", "geometry", "icon", "name", 
+                        "photo", "place_id", "plus_code", "type",
+                        "url", "utc_offset", "vicinity", "formatted_phone_number",
+                        "international_phone_number", "opening_hours", 
+                        "website", "price_level", "rating", "review",
+                        "user_ratings_total"
+                    ]
+                }
+            }
+        },
+        "required": ["place_id"]
+    }
+}
+
+def tool_place_details(place_id: str, language: str = None, fields: list = None) -> dict:
+    import googlemaps
+    
+    gmaps = googlemaps.Client(key=os.getenv('GOOGLE_MAPS_API_KEY'))
+    
+    try:
+        params = {'place_id': place_id}
+        if language:
+            params['language'] = language
+        if fields:
+            params['fields'] = fields
+            
+        result = gmaps.place(**params)
+        
+        if result.get('status') != 'OK':
+            return {"error": f"Failed to get place details: {result.get('status')}"}
+            
+        return result.get('result', {})
+        
+    except Exception as e:
+        return {"error": f"Place details lookup failed: {str(e)}"}
+
 ALL_TOOLS = [
     TOOL_SAVE_MEMORY, 
     TOOL_DELETE_MEMORY, 
     TOOL_WEATHER, 
     TOOL_CALCULATOR, 
     TOOL_PLACES_NEARBY,
-    TOOL_GEOCODE
+    TOOL_GEOCODE,
+    TOOL_PLACE_DETAILS  # Add the new tool
 ]
 
 def add_to_history(message):
