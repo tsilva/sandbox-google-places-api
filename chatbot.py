@@ -1,5 +1,7 @@
 # https://docs.anthropic.com/en/docs/build-with-claude/tool-use
 # TODO: cache prompts
+# TODO: add support for when tools fail
+# TODO: ask what to improve
 # TODO: add geocoding tool, tell to store geocode user's location and store in memory
 
 from dotenv import load_dotenv
@@ -15,21 +17,36 @@ system_memory = []
 
 TOOL_SAVE_MEMORY = {
     "name" : "tool_save_memory",
-    "description": "Used to store information the user requested to remember. Opt to call tool multiple times to store facts one by one. Memorized information will be used in system prompt.",
+    "description": "Used to store information the user requested to remember. Can optionally specify index to overwrite existing memories. Memorized information will be used in system prompt.",
     "input_schema": {
         "type": "object",
         "properties": {
             "memory_data": {
                 "type": "string",
                 "description": "Summarized version of the information to remember, compressed to use the least tokens possible while preserving all relevant facts"
+            },
+            "index": {
+                "type": "integer",
+                "description": "Optional index where to store the memory. If provided, overwrites existing memory at that index. If not provided, appends to end of memory list.",
+                "minimum": 0
             }
         },
         "required": ["memory_data"]
     }
 }
-def tool_save_memory(memory_data: str):
-    system_memory.append(memory_data)
-    system_memory[:] = system_memory[:SYSTEM_MEMORY_MAX_SIZE]
+
+def tool_save_memory(memory_data: str, index: int = None):
+    if index is not None and index < len(system_memory):
+        system_memory[index] = memory_data
+        print(f"Memory updated {index}: ", memory_data)
+        print(json.dumps(system_memory))
+    else:
+        system_memory.append(memory_data)
+        system_memory[:] = system_memory[:SYSTEM_MEMORY_MAX_SIZE]
+        print("Memory added: ", memory_data)
+        print(json.dumps(system_memory))
+
+    
 
 TOOL_DELETE_MEMORY = {
     "name": "tool_delete_memory",
@@ -47,7 +64,10 @@ TOOL_DELETE_MEMORY = {
 
 }
 def tool_delete_memory(memory_index: int):
+    memory_data = system_memory[memory_index]
     system_memory.pop(memory_index)
+    print("Memory deleted: ", memory_data)
+    print(json.dumps(system_memory))
 
 TOOL_PLACES_NEARBY = {
     "name": "tool_places_nearby",
@@ -272,12 +292,45 @@ def tool_calculator(first_number, second_number, operation: str):
     
     return result
 
+TOOL_GEOCODE = {
+    "name": "tool_geocode",
+    "description": "Convert addresses into latitude and longitude coordinates using Google Geocoding API",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "address": {
+                "type": "string",
+                "description": "Address to convert to coordinates (e.g. 'Porto, Portugal' or 'Avenida dos Aliados, Porto')"
+            }
+        },
+        "required": ["address"]
+    }
+}
+
+def tool_geocode(address: str) -> dict:
+    import googlemaps
+    
+    gmaps = googlemaps.Client(key=os.getenv('GOOGLE_MAPS_API_KEY'))
+    
+    result = gmaps.geocode(address)
+    if not result:
+        return {"error": "No results found for this address"}
+        
+    # Get the first result's location
+    location = result[0]['geometry']['location']
+    
+    return {
+        "latitude": location['lat'],
+        "longitude": location['lng']
+    }
+
 ALL_TOOLS = [
     TOOL_SAVE_MEMORY, 
     TOOL_DELETE_MEMORY, 
     TOOL_WEATHER, 
     TOOL_CALCULATOR, 
-    TOOL_PLACES_NEARBY
+    TOOL_PLACES_NEARBY,
+    TOOL_GEOCODE
 ]
 
 def add_to_history(message):
@@ -315,7 +368,18 @@ while True:
     # Build the system prompt including all memories the user asked to remember
     system_prompt_memory_str = "\n".join([f"{index}: {value}" for index, value in enumerate(list(system_memory))]).strip()
     system_prompt_text = f"""
-You are a digital assistant that can help with a variety of tasks. You can provide information about the weather, perform mathematical calculations, and search for places nearby. 
+You are a digital assistant that can help with a variety of tasks. You can provide information about the weather, perform mathematical calculations, and search for places nearby.
+
+Important: When a user mentions any location or address in their message, you must:
+1. Use the geocoding tool to get the coordinates
+2. Save those coordinates in memory using the save_memory tool
+3. Use those saved coordinates for any subsequent nearby searches
+
+For example, if a user says "I'm in Porto", you should:
+- First call geocode with "Porto, Portugal"
+- Then save the coordinates in memory
+- Use these coordinates when they later ask about nearby places
+
 Never mention that you use tools or that you are a digital assistant. Just focus on solving the user's problem.
 """.strip()
     if system_prompt_memory_str: system_prompt_text += f"\n\nHere are the memories the user asked you to remember:\n{system_prompt_memory_str}"
