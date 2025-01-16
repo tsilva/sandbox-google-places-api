@@ -1,5 +1,6 @@
 # https://docs.anthropic.com/en/docs/build-with-claude/tool-use
 # TODO: cache prompts
+# TODO: add geocoding tool, tell to store geocode user's location and store in memory
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -8,32 +9,57 @@ import os
 import json
 import anthropic
 
-SYSTEM_PROMPT = """
-You are a digital assistant that can help with a variety of tasks. You can provide information about the weather, perform mathematical calculations, and search for places nearby. 
-The user that is interacting with you is located in Porto, Portugal.
-""".strip()
+SYSTEM_MEMORY_MAX_SIZE = 5
+
+system_memory = []
+
+TOOL_SAVE_MEMORY = {
+    "name" : "tool_save_memory",
+    "description": "Used to store information the user requested to remember. Opt to call tool multiple times to store facts one by one. Memorized information will be used in system prompt.",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "memory_data": {
+                "type": "string",
+                "description": "Summarized version of the information to remember, compressed to use the least tokens possible while preserving all relevant facts"
+            }
+        },
+        "required": ["memory_data"]
+    }
+}
+def tool_save_memory(memory_data: str):
+    system_memory.append(memory_data)
+    system_memory[:] = system_memory[:SYSTEM_MEMORY_MAX_SIZE]
+
+TOOL_DELETE_MEMORY = {
+    "name": "tool_delete_memory",
+    "description": "Used to discard information that was previously stored in memory.",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "memory_index": {
+                "type": "integer",
+                "description": "The index of the memory slot to discard. The system prompt enumerates all memories at all times, prefixed by their memory slot, this is what should be referenced."
+            }
+        },
+        "required": ["memory_index"]
+    }
+
+}
+def tool_delete_memory(memory_index: int):
+    system_memory.pop(memory_index)
 
 TOOL_PLACES_NEARBY = {
     "name": "tool_places_nearby",
-    "description": "Search for places of a specific type within a given radius of a location using Google Places API",
+    "description": "Search for places using Google Places API with various filtering options",
     "input_schema": {
         "type": "object",
         "properties": {
             "location": {
                 "type": "object",
                 "properties": {
-                    "latitude": {
-                        "type": "number",
-                        "description": "Latitude coordinate of the center point",
-                        "minimum": -90,
-                        "maximum": 90
-                    },
-                    "longitude": {
-                        "type": "number",
-                        "description": "Longitude coordinate of the center point",
-                        "minimum": -180,
-                        "maximum": 180
-                    }
+                    "latitude": {"type": "number", "minimum": -90, "maximum": 90},
+                    "longitude": {"type": "number", "minimum": -180, "maximum": 180}
                 },
                 "required": ["latitude", "longitude"],
                 "description": "Geographic coordinates of the search center point"
@@ -44,9 +70,42 @@ TOOL_PLACES_NEARBY = {
                 "minimum": 1,
                 "maximum": 50000
             },
+            "keyword": {
+                "type": "string",
+                "description": "Term to match against all content indexed for this place"
+            },
+            "language": {
+                "type": "string",
+                "description": "The language code for the results (e.g., 'en', 'pt')"
+            },
+            "min_price": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 4,
+                "description": "Minimum price level (0=most affordable, 4=most expensive)"
+            },
+            "max_price": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 4,
+                "description": "Maximum price level (0=most affordable, 4=most expensive)"
+            },
+            "name": {
+                "type": "string",
+                "description": "Terms to match against place names"
+            },
+            "open_now": {
+                "type": "boolean",
+                "description": "Return only places that are currently open"
+            },
+            "rank_by": {
+                "type": "string",
+                "enum": ["prominence", "distance"],
+                "description": "Order in which to rank results"
+            },
             "place_type": {
                 "type": "string",
-                "description": "Type of place to search for (e.g., restaurant, cafe, park)",
+                "description": "Type of place to search for",
                 "enum": [
                     "accounting", "airport", "amusement_park", "aquarium", "art_gallery", 
                     "atm", "bakery", "bank", "bar", "beauty_salon", "bicycle_store", 
@@ -71,27 +130,64 @@ TOOL_PLACES_NEARBY = {
                     "transit_station", "travel_agency", "university", "veterinary_care",
                     "zoo"
                 ]
+            },
+            "page_token": {
+                "type": "string",
+                "description": "Token for retrieving the next page of results"
             }
         },
-        "required": ["location", "radius", "place_type"]
+        "required": ["location"]
     }
 }
-def tool_places_nearby(location: dict, radius: int, place_type: str) -> dict:
+def tool_places_nearby(
+    location: dict,
+    radius: int = None,
+    keyword: str = None,
+    language: str = None,
+    min_price: int = None,
+    max_price: int = None,
+    name: str = None,
+    open_now: bool = False,
+    rank_by: str = None,
+    place_type: str = None,
+    page_token: str = None
+) -> dict:
     import googlemaps
 
-    # Initialize Google Maps client
     gmaps = googlemaps.Client(key=os.getenv('GOOGLE_MAPS_API_KEY'))
-
-    # Example location (New York City coordinates)
-    #location = (40.7128, -74.0060)
-
-    # Search for nearby restaurants
-    places_result = gmaps.places_nearby(
-        location=location,
-        radius=radius,
-        type=place_type
-    )
     
+    # Convert location dict to tuple
+    loc = (location['latitude'], location['longitude'])
+    
+    # Build params dict with only non-None values
+    params = {
+        'location': loc,
+        'type': place_type,
+        'keyword': keyword,
+        'language': language,
+        'min_price': min_price,
+        'max_price': max_price,
+        'name': name,
+        'open_now': open_now,
+        'rank_by': rank_by,
+        'page_token': page_token
+    }
+    
+    # Add radius if specified (required unless rank_by=distance)
+    if radius is not None:
+        params['radius'] = radius
+    elif rank_by != 'distance':
+        params['radius'] = 1000  # Default radius
+        
+    # Remove None values
+    params = {k: v for k, v in params.items() if v is not None}
+    
+    # Make the API call
+    places_result = gmaps.places_nearby(**params)
+    
+    print(json.dumps(places_result, indent=2))
+    #results = places_result.get('results', [])
+
     return places_result.get('results', [])
 
 TOOL_WEATHER = {
@@ -176,7 +272,13 @@ def tool_calculator(first_number, second_number, operation: str):
     
     return result
 
-ALL_TOOLS = [TOOL_WEATHER, TOOL_CALCULATOR, TOOL_PLACES_NEARBY]
+ALL_TOOLS = [
+    TOOL_SAVE_MEMORY, 
+    TOOL_DELETE_MEMORY, 
+    TOOL_WEATHER, 
+    TOOL_CALCULATOR, 
+    TOOL_PLACES_NEARBY
+]
 
 def add_to_history(message):
     global conversation_history
@@ -210,18 +312,26 @@ while True:
         if user_input.lower() == 'quit': break
         add_to_history({"role": "user", "content": user_input})
 
+    # Build the system prompt including all memories the user asked to remember
+    system_prompt_memory_str = "\n".join([f"{index}: {value}" for index, value in enumerate(list(system_memory))]).strip()
+    system_prompt_text = f"""
+You are a digital assistant that can help with a variety of tasks. You can provide information about the weather, perform mathematical calculations, and search for places nearby. 
+Never mention that you use tools or that you are a digital assistant. Just focus on solving the user's problem.
+""".strip()
+    if system_prompt_memory_str: system_prompt_text += f"\n\nHere are the memories the user asked you to remember:\n{system_prompt_memory_str}"
+
     # Send message to Claude
     message = client.messages.create(
         model="claude-3-5-sonnet-20241022",
         max_tokens=1024,
         temperature=0.0, 
+        tools=ALL_TOOLS,
         system=[{
             "type": "text", 
-            "text": SYSTEM_PROMPT, 
-            "cache_control": {"type": "ephemeral"}
+            "text": system_prompt_text, 
+            "cache_control": {"type": "ephemeral"} # Prompt caching references the entire prompt - tools, system, and messages (in that order) up to and including the block designated with cache_control.
         }],
-        messages=conversation_history,
-        tools=ALL_TOOLS
+        messages=conversation_history
     )
 
     # Add response to history

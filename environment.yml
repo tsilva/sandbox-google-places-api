@@ -1,5 +1,4 @@
 name: sandbox-google-places-api
-   conda activate google-places
 channels:
   - defaults
 dependencies:
