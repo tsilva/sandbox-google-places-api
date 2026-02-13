@@ -1,0 +1,10 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "sandbox-google-places-api"
+version = "0.1.0"
+description = "**📍 Sandbox for experimenting with Google Places API and Claude tool calling**"
+requires-python = ">=3.10"
+dependencies = []

@@ -1,7 +1,7 @@
 <div align="center">
   <img src="logo.png" alt="sandbox-google-places-api" width="512"/>
 
-  **📍 Sandbox for experimenting with Google Places API and Claude tool calling**
+  **📍 Experiment with Google Places API and Claude tool calling 🗺️**
 
 </div>
 
