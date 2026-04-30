@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="logo.png" alt="sandbox-google-places-api" width="512"/>
+  <img src="https://raw.githubusercontent.com/tsilva/sandbox-google-places-api/main/logo.png" alt="sandbox-google-places-api" width="512"/>
 
   **📍 Experiment with Google Places API and Claude tool calling 🗺️**
 
