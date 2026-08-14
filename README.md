@@ -1,3 +1,6 @@
+> [!NOTE]
+> This repository exists only for experimentation and is currently archived.
+
 <div align="center">
   <img src="https://raw.githubusercontent.com/tsilva/sandbox-google-places-api/main/logo.png" alt="sandbox-google-places-api" width="512"/>
 
