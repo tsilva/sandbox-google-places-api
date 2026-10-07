@@ -1,12 +1,13 @@
+<p align="center">
+  <img src="https://raw.githubusercontent.com/tsilva/sandbox-google-places-api/main/logo.png" alt="sandbox-google-places-api" width="512"/>
+  <br />
+  <!-- repo-tagline:start -->
+  <strong>📍 Experiment with Google Places API and Claude tool calling 🗺️</strong>
+  <!-- repo-tagline:end -->
+</p>
+
 > [!NOTE]
 > This repository exists only for experimentation and is currently archived.
-
-<div align="center">
-  <img src="https://raw.githubusercontent.com/tsilva/sandbox-google-places-api/main/logo.png" alt="sandbox-google-places-api" width="512"/>
-
-  **📍 Experiment with Google Places API and Claude tool calling 🗺️**
-
-</div>
 
 ## Overview
 
